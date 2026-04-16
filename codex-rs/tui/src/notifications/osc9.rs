@@ -46,7 +46,8 @@ pub struct PostNotification {
 impl Command for PostNotification {
     fn write_ansi(&self, f: &mut impl fmt::Write) -> fmt::Result {
         if self.dcs_passthrough {
-            write!(f, "\x1bPtmux;\x1b\x1b]9;{}\x07\x1b\\", self.message)
+            let escaped_message = escape_tmux_dcs_passthrough_payload(&self.message);
+            write!(f, "\x1bPtmux;\x1b\x1b]9;{escaped_message}\x07\x1b\\")
         } else {
             write!(f, "\x1b]9;{}\x07", self.message)
         }
@@ -63,6 +64,10 @@ impl Command for PostNotification {
     fn is_ansi_code_supported(&self) -> bool {
         true
     }
+}
+
+fn escape_tmux_dcs_passthrough_payload(message: &str) -> String {
+    message.replace('\u{1b}', "\u{1b}\u{1b}")
 }
 
 #[cfg(test)]
@@ -100,5 +105,23 @@ mod tests {
             .expect("OSC 9 command should format");
 
         assert_eq!(ansi, "\u{1b}Ptmux;\u{1b}\u{1b}]9;done\u{7}\u{1b}\\");
+    }
+
+    #[test]
+    fn post_notification_escapes_escape_bytes_inside_tmux_payload() {
+        let mut ansi = String::new();
+        let command = PostNotification {
+            message: "danger\u{1b}[31m".to_string(),
+            dcs_passthrough: true,
+        };
+
+        command
+            .write_ansi(&mut ansi)
+            .expect("OSC 9 command should format");
+
+        assert_eq!(
+            ansi,
+            "\u{1b}Ptmux;\u{1b}\u{1b}]9;danger\u{1b}\u{1b}[31m\u{7}\u{1b}\\"
+        );
     }
 }
