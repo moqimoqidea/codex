@@ -2111,8 +2111,12 @@ name = "codex-device-key"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "core-foundation 0.10.1",
+ "core-foundation-sys",
  "p256",
  "pretty_assertions",
+ "security-framework 3.5.1",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "sha2",
