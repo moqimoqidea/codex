@@ -63,6 +63,7 @@ async fn thread_start_injects_dynamic_tools_into_model_requests() -> Result<()> 
         "additionalProperties": false,
     });
     let dynamic_tool = DynamicToolSpec {
+        namespace: None,
         name: "demo_tool".to_string(),
         description: "Demo dynamic tool".to_string(),
         input_schema: input_schema.clone(),
@@ -136,6 +137,7 @@ async fn thread_start_keeps_hidden_dynamic_tools_out_of_model_requests() -> Resu
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
     let dynamic_tool = DynamicToolSpec {
+        namespace: Some("codex_app".to_string()),
         name: "hidden_tool".to_string(),
         description: "Hidden dynamic tool".to_string(),
         input_schema: json!({
@@ -222,6 +224,7 @@ async fn dynamic_tool_call_round_trip_sends_text_content_items_to_model() -> Res
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
     let dynamic_tool = DynamicToolSpec {
+        namespace: None,
         name: tool_name.to_string(),
         description: "Demo dynamic tool".to_string(),
         input_schema: json!({
@@ -391,6 +394,7 @@ async fn dynamic_tool_call_round_trip_sends_content_items_to_model() -> Result<(
     timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
 
     let dynamic_tool = DynamicToolSpec {
+        namespace: None,
         name: tool_name.to_string(),
         description: "Demo dynamic tool".to_string(),
         input_schema: json!({

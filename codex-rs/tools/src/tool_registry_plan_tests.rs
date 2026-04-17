@@ -1424,6 +1424,7 @@ fn search_tool_registers_for_deferred_dynamic_tools() {
         windows_sandbox_level: WindowsSandboxLevel::Disabled,
     });
     let dynamic_tool = DynamicToolSpec {
+        namespace: Some("codex_app".to_string()),
         name: "automation_update".to_string(),
         description: "Create, update, view, or delete recurring automations.".to_string(),
         input_schema: json!({
@@ -1453,7 +1454,7 @@ fn search_tool_registers_for_deferred_dynamic_tools() {
         kind: ToolHandlerKind::ToolSearch,
     }));
     assert!(handlers.contains(&ToolHandlerSpec {
-        name: ToolName::plain("automation_update"),
+        name: ToolName::namespaced("codex_app", "automation_update"),
         kind: ToolHandlerKind::DynamicTool,
     }));
 }

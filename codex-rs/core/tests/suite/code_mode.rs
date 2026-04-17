@@ -2555,6 +2555,7 @@ async fn code_mode_can_call_hidden_dynamic_tools() -> Result<()> {
         .start_thread_with_tools(
             base_test.config.clone(),
             vec![DynamicToolSpec {
+                namespace: Some("codex_app".to_string()),
                 name: "hidden_dynamic_tool".to_string(),
                 description: "A hidden dynamic tool.".to_string(),
                 input_schema: serde_json::json!({

@@ -2539,6 +2539,7 @@ impl CodexMessageProcessor {
             dynamic_tools
                 .into_iter()
                 .map(|tool| CoreDynamicToolSpec {
+                    namespace: tool.namespace,
                     name: tool.name,
                     description: tool.description,
                     input_schema: tool.input_schema,
@@ -10160,6 +10161,7 @@ mod tests {
     #[test]
     fn validate_dynamic_tools_rejects_unsupported_input_schema() {
         let tools = vec![ApiDynamicToolSpec {
+            namespace: None,
             name: "my_tool".to_string(),
             description: "test".to_string(),
             input_schema: json!({"type": "null"}),
@@ -10172,6 +10174,7 @@ mod tests {
     #[test]
     fn validate_dynamic_tools_accepts_sanitizable_input_schema() {
         let tools = vec![ApiDynamicToolSpec {
+            namespace: None,
             name: "my_tool".to_string(),
             description: "test".to_string(),
             // Missing `type` is common; core sanitizes these to a supported schema.
@@ -10184,6 +10187,7 @@ mod tests {
     #[test]
     fn validate_dynamic_tools_accepts_nullable_field_schema() {
         let tools = vec![ApiDynamicToolSpec {
+            namespace: None,
             name: "my_tool".to_string(),
             description: "test".to_string(),
             input_schema: json!({
