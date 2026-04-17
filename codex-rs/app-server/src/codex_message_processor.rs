@@ -1156,6 +1156,11 @@ impl CodexMessageProcessor {
                 self.command_exec_terminate(to_connection_request_id(request_id), params)
                     .await;
             }
+            ClientRequest::DeviceKeyCreate { .. }
+            | ClientRequest::DeviceKeyPublic { .. }
+            | ClientRequest::DeviceKeySign { .. } => {
+                warn!("Device key request reached CodexMessageProcessor unexpectedly");
+            }
             ClientRequest::ConfigRead { .. }
             | ClientRequest::ConfigValueWrite { .. }
             | ClientRequest::ConfigBatchWrite { .. }
