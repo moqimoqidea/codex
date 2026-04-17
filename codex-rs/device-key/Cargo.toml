@@ -1,0 +1,19 @@
+[package]
+name = "codex-device-key"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+p256 = { workspace = true, features = ["ecdsa", "pkcs8"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
