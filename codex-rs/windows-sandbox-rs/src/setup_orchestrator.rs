@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::c_void;
+use std::os::windows::fs::MetadataExt;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::path::PathBuf;
@@ -33,6 +34,7 @@ use windows_sys::Win32::Security::AllocateAndInitializeSid;
 use windows_sys::Win32::Security::CheckTokenMembership;
 use windows_sys::Win32::Security::FreeSid;
 use windows_sys::Win32::Security::SECURITY_NT_AUTHORITY;
+use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_HIDDEN;
 
 pub const SETUP_VERSION: u32 = 5;
 pub const OFFLINE_USERNAME: &str = "CodexSandboxOffline";
@@ -40,18 +42,6 @@ pub const ONLINE_USERNAME: &str = "CodexSandboxOnline";
 const ERROR_CANCELLED: u32 = 1223;
 const SECURITY_BUILTIN_DOMAIN_RID: u32 = 0x0000_0020;
 const DOMAIN_ALIAS_RID_ADMINS: u32 = 0x0000_0220;
-const USERPROFILE_READ_ROOT_EXCLUSIONS: &[&str] = &[
-    ".ssh",
-    ".gnupg",
-    ".aws",
-    ".azure",
-    ".kube",
-    ".docker",
-    ".config",
-    ".npm",
-    ".pki",
-    ".terraform.d",
-];
 const WINDOWS_PLATFORM_DEFAULT_READ_ROOTS: &[&str] = &[
     r"C:\Windows",
     r"C:\Program Files",
@@ -331,14 +321,17 @@ fn profile_read_roots(user_profile: &Path) -> Vec<PathBuf> {
     entries
         .filter_map(Result::ok)
         .map(|entry| (entry.file_name(), entry.path()))
-        .filter(|(name, _)| {
+        .filter(|(name, path)| {
             let name = name.to_string_lossy();
-            !USERPROFILE_READ_ROOT_EXCLUSIONS
-                .iter()
-                .any(|excluded| name.eq_ignore_ascii_case(excluded))
+            !name.starts_with('.') && !path_has_hidden_attribute(path)
         })
         .map(|(_, path)| path)
         .collect()
+}
+
+fn path_has_hidden_attribute(path: &Path) -> bool {
+    path.metadata()
+        .is_ok_and(|metadata| metadata.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0)
 }
 
 fn gather_helper_read_roots(codex_home: &Path) -> Vec<PathBuf> {
@@ -787,6 +780,7 @@ fn build_payload_roots(
             request.env_map,
         )
     };
+    let write_roots = filter_user_profile_root(write_roots);
     let write_roots = filter_sensitive_write_roots(write_roots, request.codex_home);
     let mut read_roots = if let Some(roots) = overrides.read_roots.as_deref() {
         // An explicit override is the split policy's complete readable set. Keep only the
@@ -804,6 +798,7 @@ fn build_payload_roots(
     } else {
         gather_read_roots(request.command_cwd, request.policy, request.codex_home)
     };
+    read_roots = expand_user_profile_read_root(read_roots);
     let write_root_set: HashSet<PathBuf> = write_roots.iter().cloned().collect();
     read_roots.retain(|root| !write_root_set.contains(root));
     (read_roots, write_roots)
@@ -832,6 +827,44 @@ fn build_payload_deny_write_paths(
         .collect();
     deny_write_paths.extend(allow_deny_paths.deny);
     deny_write_paths
+}
+
+fn filter_user_profile_root(roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    let Ok(user_profile) = std::env::var("USERPROFILE") else {
+        return roots;
+    };
+    filter_roots_matching(roots, Path::new(&user_profile))
+}
+
+fn expand_user_profile_read_root(roots: Vec<PathBuf>) -> Vec<PathBuf> {
+    let Ok(user_profile) = std::env::var("USERPROFILE") else {
+        return roots;
+    };
+    expand_read_root_matching(roots, Path::new(&user_profile))
+}
+
+fn expand_read_root_matching(roots: Vec<PathBuf>, expanded_root: &Path) -> Vec<PathBuf> {
+    let expanded_root_key = canonical_path_key(expanded_root);
+    let mut out = Vec::new();
+    for root in roots {
+        if canonical_path_key(&root) == expanded_root_key {
+            out.extend(filter_roots_matching(
+                profile_read_roots(expanded_root),
+                expanded_root,
+            ));
+        } else {
+            out.push(root);
+        }
+    }
+    let mut seen = HashSet::new();
+    out.retain(|root| seen.insert(canonical_path_key(root)));
+    out
+}
+
+fn filter_roots_matching(mut roots: Vec<PathBuf>, removed_root: &Path) -> Vec<PathBuf> {
+    let removed_root_key = canonical_path_key(removed_root);
+    roots.retain(|root| canonical_path_key(root) != removed_root_key);
+    roots
 }
 
 fn filter_sensitive_write_roots(mut roots: Vec<PathBuf>, codex_home: &Path) -> Vec<PathBuf> {
@@ -1025,11 +1058,11 @@ mod tests {
     }
 
     #[test]
-    fn profile_read_roots_excludes_configured_top_level_entries() {
+    fn profile_read_roots_excludes_hidden_top_level_entries() {
         let tmp = TempDir::new().expect("tempdir");
         let user_profile = tmp.path();
         let allowed_dir = user_profile.join("Documents");
-        let allowed_file = user_profile.join(".gitconfig");
+        let allowed_file = user_profile.join("settings.json");
         let excluded_dir = user_profile.join(".ssh");
         let excluded_case_variant = user_profile.join(".AWS");
 
@@ -1053,6 +1086,46 @@ mod tests {
         let roots = profile_read_roots(&missing_profile);
 
         assert_eq!(vec![missing_profile], roots);
+    }
+
+    #[test]
+    fn filter_roots_matching_removes_only_the_matching_root() {
+        let tmp = TempDir::new().expect("tempdir");
+        let user_profile = tmp.path().join("user-profile");
+        let profile_child = user_profile.join("project");
+        let other_root = tmp.path().join("other-root");
+        fs::create_dir_all(&profile_child).expect("create profile child");
+        fs::create_dir_all(&other_root).expect("create other root");
+
+        let roots = super::filter_roots_matching(
+            vec![
+                user_profile.clone(),
+                profile_child.clone(),
+                other_root.clone(),
+            ],
+            &user_profile,
+        );
+
+        assert_eq!(vec![profile_child, other_root], roots);
+    }
+
+    #[test]
+    fn expand_read_root_matching_replaces_the_matching_root_with_profile_children() {
+        let tmp = TempDir::new().expect("tempdir");
+        let user_profile = tmp.path().join("user-profile");
+        let documents = user_profile.join("Documents");
+        let excluded = user_profile.join(".ssh");
+        let other_root = tmp.path().join("other-root");
+        fs::create_dir_all(&documents).expect("create documents");
+        fs::create_dir_all(&excluded).expect("create excluded dir");
+        fs::create_dir_all(&other_root).expect("create other root");
+
+        let roots = super::expand_read_root_matching(
+            vec![user_profile.clone(), other_root.clone()],
+            &user_profile,
+        );
+
+        assert_eq!(vec![documents, other_root], roots);
     }
 
     #[test]
