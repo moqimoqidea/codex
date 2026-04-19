@@ -386,6 +386,25 @@ async fn thread_start_params_include_review_policy_when_auto_review_is_enabled()
     );
 }
 
+#[tokio::test]
+async fn thread_start_params_persist_extended_history_for_audit() {
+    let codex_home = tempdir().expect("create temp codex home");
+    let cwd = tempdir().expect("create temp cwd");
+    let config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .fallback_cwd(Some(cwd.path().to_path_buf()))
+        .build()
+        .await
+        .expect("build default config");
+
+    let params = thread_start_params_from_config(&config);
+
+    // Exec must opt into Extended rollout persistence so structured
+    // apply_patch events (including `FileChange::Delete { content }`)
+    // land in rollout logs for downstream audit tooling.
+    assert!(params.persist_extended_history);
+}
+
 #[test]
 fn session_configured_from_thread_response_uses_review_policy_from_response() {
     let response = ThreadStartResponse {

@@ -915,6 +915,10 @@ fn thread_start_params_from_config(config: &Config) -> ThreadStartParams {
         sandbox: sandbox_mode_from_policy(config.permissions.sandbox_policy.get()),
         config: config_request_overrides_from_config(config),
         ephemeral: Some(config.ephemeral),
+        // Match TUI so non-interactive runs keep structured apply_patch/exec
+        // events in rollout (e.g. `FileChange::Delete { content }`), which
+        // audit tooling reads via `EventMsg::PatchApplyEnd`.
+        persist_extended_history: true,
         ..ThreadStartParams::default()
     }
 }
